@@ -1,0 +1,97 @@
+name: Supabase
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - ".github/workflows/supabase.yml"
+  pull_request:
+    paths:
+      - "supabase/**"
+      - ".github/workflows/supabase.yml"
+  workflow_dispatch:
+
+concurrency:
+  # Never run two deploys against the database at once, and never cancel one midway.
+  group: supabase-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate migrations and functions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 3.x
+
+      - name: Apply all migrations to a fresh local database
+        run: |
+          supabase db start
+          supabase db lint --level warning --fail-on error
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check and test Edge Functions
+        run: |
+          if find supabase/functions -name '*.ts' | grep -q .; then
+            deno check $(find supabase/functions -name '*.ts')
+          fi
+          if find supabase/functions -name '*_test.ts' -o -name '*.test.ts' | grep -q .; then
+            deno test --allow-env --allow-read supabase/functions
+          else
+            echo "No function tests yet"
+          fi
+
+  deploy:
+    name: Deploy to Supabase
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      # CLI 3 requires explicit confirmation for changes to the hosted project.
+      SUPABASE_YES: "1"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 3.x
+
+      - name: Check required secrets
+        run: |
+          missing=0
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
+            if [ -z "${!name}" ]; then echo "::error::Missing repository secret $name"; missing=1; fi
+          done
+          exit $missing
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Apply migrations
+        run: supabase db push --remote --include-all --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Deploy Edge Functions
+        run: |
+          # Every folder under supabase/functions except _shared is a function.
+          fns=$(find supabase/functions -mindepth 1 -maxdepth 1 -type d ! -name '_*' -exec basename {} \; | sort)
+          if [ -z "$fns" ]; then
+            echo "No functions to deploy yet"
+            exit 0
+          fi
+          for fn in $fns; do
+            echo "Deploying $fn"
+            supabase functions deploy "$fn" --use-api
+          done
