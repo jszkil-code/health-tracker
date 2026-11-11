@@ -182,6 +182,7 @@ Each key has exactly one home, and none of them are in the repo.
 | Private GitHub repo | github.com | n/a | Phase 1 |
 | Supabase project URL and publishable key | supabase.com, project settings | GitHub Actions secrets, injected into the APK at build time | Phase 1 |
 | Supabase access token | Supabase account settings | GitHub Actions secret `SUPABASE_ACCESS_TOKEN` | Phase 1 |
+| Supabase project ref and database password | supabase.com, project settings | GitHub Actions secrets `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD` (used by `supabase db push`) | Phase 1 |
 | Android signing keystore | Generated once with `keytool` | GitHub Actions secrets (base64 keystore plus passwords) | Phase 1 |
 | Anthropic API key | Claude Console (platform.claude.com) | Supabase secret `ANTHROPIC_API_KEY` | Phase 3 |
 | USDA FoodData Central key | api.data.gov sign-up (free) | Supabase secret `FDC_API_KEY` | Phase 3 |
@@ -212,6 +213,7 @@ CLAUDE.md
 - MVVM with ViewModel and StateFlow, Hilt, Room with SQLCipher, WorkManager, CameraX, the supabase-kt client, and kotlinx.serialization.
 - Current stable library versions, kept in a Gradle version catalog.
 - minSdk 28, the lowest Android version Health Connect supports, unless my phone answer changes it.
+- compileSdk 37 (current AndroidX releases require it), targetSdk 36 until API 37 behavior changes are tested on the phone.
 
 **Server conventions**
 
@@ -250,7 +252,7 @@ curl -sSL -o tools.zip https://dl.google.com/android/repository/commandlinetools
 unzip -q tools.zip -d $ANDROID_HOME/cmdline-tools
 mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
 yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
-$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36" "platforms;android-37.0" "build-tools;36.0.0"
 ```
 
 The setup script must finish in about 5 minutes to be cached. Supabase deploys run in GitHub Actions, not in the Claude Code session.
